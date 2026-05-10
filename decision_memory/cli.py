@@ -73,12 +73,98 @@ STOP_TERMS = {
     "with",
 }
 
+ROUTE_RULES: Dict[str, Tuple[Tuple[str, int], ...]] = {
+    "content-proof": (
+        ("content proof", 4),
+        ("build proof", 3),
+        ("public-facing claim", 3),
+        ("content", 1),
+        ("post", 1),
+        ("publish", 1),
+        ("proof", 1),
+        ("brief", 1),
+        ("claim", 1),
+        ("audience", 1),
+        ("credibility", 1),
+    ),
+    "privacy-boundary": (
+        ("privacy boundary", 4),
+        ("private local", 4),
+        ("private-local", 4),
+        ("public fixture", 4),
+        ("public-fixture", 4),
+        ("real vault", 3),
+        ("fake fixture", 3),
+        ("fake fixtures", 3),
+        ("public proof", 3),
+        ("privacy", 2),
+        ("private", 2),
+        ("public", 1),
+        ("fixture", 1),
+        ("fixtures", 1),
+        ("vault", 1),
+        ("data", 1),
+        ("sanitized", 1),
+        ("anonymized", 1),
+        ("expose", 1),
+    ),
+    "scope-decision": (
+        ("scope decision", 4),
+        ("semantic search", 4),
+        ("out of scope", 4),
+        ("not adding", 3),
+        ("milestone", 2),
+        ("defer", 2),
+        ("deferred", 2),
+        ("rejected", 2),
+        ("roadmap", 1),
+        ("strategy", 1),
+        ("scope", 1),
+        ("phase", 1),
+        ("tradeoff", 1),
+    ),
+    "build-path": (
+        ("build path", 4),
+        ("command line", 4),
+        ("github proof", 3),
+        ("cli", 3),
+        ("prototype", 2),
+        ("implementation", 2),
+        ("github", 2),
+        ("router", 2),
+        ("eval", 1),
+        ("test", 1),
+        ("build", 1),
+        ("tool", 1),
+        ("workflow", 1),
+    ),
+}
+
+ROUTE_REASONS = {
+    "content-proof": "This points to content-proof because it mentions {signals}, which usually means Ashley needs evidence for content or a public-facing claim.",
+    "privacy-boundary": "This points to privacy-boundary because it mentions {signals}, which usually means the decision is about what can be public, fake, private, or exposed.",
+    "scope-decision": "This points to scope-decision because it mentions {signals}, which usually means Ashley is deciding what stays in or out of the current phase.",
+    "build-path": "This points to build-path because it mentions {signals}, which usually means the decision affects implementation direction or proof of build.",
+}
+
+DEFAULT_CLARIFYING_QUESTION = (
+    "Which route should this support, content-proof, privacy-boundary, scope-decision, or build-path?"
+)
+
 
 @dataclass
 class ParsedMarkdown:
     path: Path
     frontmatter: Dict[str, str]
     body: str
+
+
+@dataclass
+class RouteResult:
+    category: str
+    reason: str
+    confidence: str
+    clarifying_question: str = ""
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -300,8 +386,15 @@ def cmd_recall(vault: Path, args: List[str]) -> int:
             2,
         )
     query = " ".join(args)
+    route = classify_route(query)
     decisions = list((vault / "decisions").glob("*.md")) if (vault / "decisions").exists() else []
     ranked = rank_decisions(query, decisions)
+
+    print_route_result(route)
+    if route.category == "needs-clarification":
+        print("No route applied until the question is clarified.")
+        return 0
+
     if not ranked:
         print("No decisions matched.")
         print(f'Fallback: try broader terms or run rg "{query}" {vault}/')
@@ -386,6 +479,7 @@ def extract_candidates(text: str, source: Path) -> List[Dict[str, str]]:
         title = slug_title(decision)
         day = find_date(text) or str(date.today())
         candidate_id = f"{day}-{slugify(title)}"
+        route = classify_route(block)
         candidates.append(
             {
                 "id": candidate_id,
@@ -397,6 +491,10 @@ def extract_candidates(text: str, source: Path) -> List[Dict[str, str]]:
                 "decision_type": infer_type(block),
                 "reuse_for": infer_reuse(block),
                 "confidence": "medium",
+                "route_category": route.category,
+                "route_reason": route.reason,
+                "route_confidence": route.confidence,
+                "clarifying_question": route.clarifying_question,
                 "decision": decision,
                 "why": find_labeled(block, "Why"),
                 "rejected": find_labeled(block, "Rejected"),
@@ -420,6 +518,8 @@ def render_candidate(candidate: Dict[str, str]) -> str:
         "decision_type": candidate["decision_type"],
         "reuse_for": candidate["reuse_for"],
         "confidence": candidate["confidence"],
+        "route_category": candidate.get("route_category", "needs-clarification"),
+        "route_confidence": candidate.get("route_confidence", "low"),
     }
     missing = []
     if not candidate.get("why"):
@@ -466,6 +566,13 @@ active
 ## Reopen When
 
 {candidate.get('reopen') or ''}
+
+## Router Result
+
+- route: {candidate.get('route_category') or ''}
+- reason: {candidate.get('route_reason') or ''}
+- confidence: {candidate.get('route_confidence') or ''}
+- clarification: {candidate.get('clarifying_question') or 'none'}
 
 ## Evidence
 
@@ -639,17 +746,149 @@ def infer_reuse(block: str) -> str:
     return ",".join(values)
 
 
+def classify_route(text: str) -> RouteResult:
+    normalized = " ".join(text.lower().split())
+    if not normalized or not query_terms(text):
+        return RouteResult(
+            "needs-clarification",
+            "The input does not include enough route-specific language to classify.",
+            "low",
+            DEFAULT_CLARIFYING_QUESTION,
+        )
+
+    terms = set(re.findall(r"[a-z0-9]+", normalized))
+    scores: Dict[str, int] = {}
+    evidence: Dict[str, List[str]] = {}
+    for category, rules in ROUTE_RULES.items():
+        for signal, weight in rules:
+            if route_signal_matches(signal, normalized, terms):
+                scores[category] = scores.get(category, 0) + weight
+                evidence.setdefault(category, []).append(signal)
+
+    if not scores:
+        return RouteResult(
+            "needs-clarification",
+            "The input has searchable words, but none map cleanly to a known route.",
+            "low",
+            DEFAULT_CLARIFYING_QUESTION,
+        )
+
+    top_score = max(scores.values())
+    top_categories = [category for category, score in scores.items() if score == top_score]
+    if len(top_categories) > 1:
+        routes = format_route_list(top_categories)
+        return RouteResult(
+            "needs-clarification",
+            f"The input matches {routes} with equal strength.",
+            "low",
+            f"Should this be routed as {routes}?",
+        )
+
+    category = top_categories[0]
+    signals = format_signal_list(evidence[category])
+    return RouteResult(
+        category,
+        ROUTE_REASONS[category].format(signals=signals),
+        route_confidence(top_score),
+    )
+
+
+def route_signal_matches(signal: str, normalized: str, terms: set[str]) -> bool:
+    if " " in signal or "-" in signal:
+        return signal in normalized
+    return signal in terms
+
+
+def route_confidence(score: int) -> str:
+    if score >= 4:
+        return "high"
+    if score >= 2:
+        return "medium"
+    return "low"
+
+
+def format_signal_list(signals: Sequence[str]) -> str:
+    unique = []
+    for signal in signals:
+        if signal not in unique:
+            unique.append(signal)
+    selected = unique[:3]
+    if len(selected) == 1:
+        return selected[0]
+    if len(selected) == 2:
+        return f"{selected[0]} and {selected[1]}"
+    return f"{', '.join(selected[:-1])}, and {selected[-1]}"
+
+
+def format_route_list(routes: Sequence[str]) -> str:
+    if len(routes) == 1:
+        return routes[0]
+    if len(routes) == 2:
+        return f"{routes[0]} or {routes[1]}"
+    return f"{', '.join(routes[:-1])}, or {routes[-1]}"
+
+
+def print_route_result(route: RouteResult) -> None:
+    print("Router recommendation:")
+    print(f"  route: {route.category}")
+    print(f"  reason: {route.reason}")
+    print(f"  confidence: {route.confidence}")
+    if route.clarifying_question:
+        print(f"  clarification: {route.clarifying_question}")
+
+
 def rank_decisions(query: str, paths: Iterable[Path]) -> List[Tuple[int, ParsedMarkdown]]:
     terms = query_terms(query)
+    phrases = query_phrases(query)
+    route = classify_route(query)
     ranked = []
     for path in paths:
         parsed = parse_markdown(path)
         haystack = (path.stem + " " + " ".join(parsed.frontmatter.values()) + " " + parsed.body).lower()
+        normalized_haystack = " ".join(haystack.split())
         haystack_terms = set(re.findall(r"[a-z0-9]+", haystack))
         score = sum(1 for term in terms if term in haystack_terms)
+        score += phrase_match_score(phrases, normalized_haystack)
+        score += route_match_score(route, query, normalized_haystack, haystack_terms)
         if score:
             ranked.append((score, parsed))
     return sorted(ranked, key=lambda item: item[0], reverse=True)
+
+
+def query_phrases(query: str) -> List[str]:
+    terms = [
+        term
+        for term in re.findall(r"[a-z0-9]+", query.lower())
+        if len(term) >= 3 and term not in STOP_TERMS
+    ]
+    phrases = []
+    for size in (3, 2):
+        for index in range(0, len(terms) - size + 1):
+            phrases.append(" ".join(terms[index : index + size]))
+    return phrases
+
+
+def phrase_match_score(phrases: Sequence[str], normalized_haystack: str) -> int:
+    score = 0
+    for phrase in phrases:
+        if phrase in normalized_haystack:
+            score += 2 * len(phrase.split())
+    return score
+
+
+def route_match_score(route: RouteResult, query: str, normalized_haystack: str, haystack_terms: set[str]) -> int:
+    if route.category == "needs-clarification":
+        return 0
+
+    normalized_query = " ".join(query.lower().split())
+    query_term_set = set(re.findall(r"[a-z0-9]+", normalized_query))
+    score = 0
+    for signal, weight in ROUTE_RULES[route.category]:
+        if not route_signal_matches(signal, normalized_query, query_term_set):
+            continue
+        if route_signal_matches(signal, normalized_haystack, haystack_terms):
+            score += weight
+    return score
 
 
 def query_terms(query: str) -> set[str]:
