@@ -1,0 +1,12 @@
+- query: "What decisions affect content proof?"
+  expected:
+    - 2026-05-03-block-content-until-build-proof-exists
+    - 2026-05-03-the-post-should-frame-the-build-as-decision
+
+- query: "What did we decide about public proof?"
+  expected:
+    - 2026-05-03-fake-fixtures-for-public-proof
+
+- query: "Should we use semantic search?"
+  expected:
+    - 2026-05-03-adding-semantic-search-in-milestone-1
