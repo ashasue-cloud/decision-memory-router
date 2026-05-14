@@ -60,15 +60,31 @@ Expected safe-fixture output:
 0 private data
 ```
 
-## Work Needed
+## Phase 2.1 Yellow-Review Cleanup
+
+Manual review found the slice useful but not ready for private-local reuse proof because the partial candidate was under-explained.
+
+This cleanup adds:
+
+- readable possessive titles, for example `Keep Tomorrow's Approved Post Separate`
+- slug cleanup for possessives, for example `keep-tomorrows-approved-post-separate`
+- missing-field reporting for every blocker before promotion: `Reopen When`, `Assumptions`, and `Missing Data`
+- tests that preserve the safe real-shaped fixture output while making the partial candidate easier to judge
+
+## Work Covered In This Branch
 
 - Add section-aware parsing for session notes instead of splitting every signal-heavy paragraph.
 - Ignore headings, project lists, salience summaries, and assumption inventories unless they contain a full decision record.
 - Require labeled decision fields before suggesting `promote`.
 - Add candidate confidence levels: `complete`, `partial`, `noise-risk`.
-- Group duplicate or related candidates from the same source.
+- Improve partial-candidate missing-field reporting.
+- Improve generated title formatting for possessives and capped titles.
 - Keep private-local candidates blocked from public-proof promotion.
-- Add an eval fixture based on sanitized real-shaped notes.
+
+## Remaining Work Before Private-Local Reuse Proof
+
+- Decide whether duplicate or related candidates from the same source need grouping.
+- Add more sanitized real-shaped fixtures if one note is not enough coverage.
 
 ## Acceptance
 

@@ -17,6 +17,7 @@ from decision_memory.cli import (
     parse_query_file,
     query_terms,
     rank_decisions,
+    slugify,
     slug_title,
 )
 
@@ -187,6 +188,8 @@ When the boundary changes.
     def test_slug_title_drops_leading_and_trailing_fragments(self):
         self.assertEqual(slug_title("We chose command line first for the prototype."), "Command Line First For The Prototype")
         self.assertEqual(slug_title("We are not adding semantic search in Milestone 1."), "Adding Semantic Search In Milestone 1")
+        self.assertEqual(slug_title("Keep tomorrow's approved post separate from the Phase 2 build receipt."), "Keep Tomorrow's Approved Post Separate")
+        self.assertEqual(slugify("Keep tomorrow's approved post separate."), "keep-tomorrows-approved-post-separate")
 
     def test_infer_source_for_content_session(self):
         self.assertEqual(infer_source(Path("fake-vault/briefs/2026-05-03-content-session.md")), "content-session")
@@ -238,6 +241,7 @@ When the boundary changes.
         )
         self.assertEqual(candidates[0]["title"], "Keep Phase 2 As A Review Slice")
         self.assertEqual(candidates[1]["title"], "Use A Safe Real Shaped Fixture")
+        self.assertEqual(candidates[2]["title"], "Keep Tomorrow's Approved Post Separate")
         self.assertNotIn("Passing Tests", {candidate["title"] for candidate in candidates})
         self.assertNotIn("Energy Note", {candidate["title"] for candidate in candidates})
 
@@ -269,6 +273,7 @@ When the boundary changes.
             inbox_text = output.getvalue()
             self.assertIn("candidate_confidence: complete", inbox_text)
             self.assertIn("candidate_confidence: partial", inbox_text)
+            self.assertIn("missing: Reopen When, Assumptions, Missing Data", inbox_text)
             self.assertIn("suggested action: review-local", inbox_text)
 
     def test_classify_route_unclear_input_needs_clarification(self):

@@ -24,6 +24,12 @@ When a query is too vague, the router now asks for the missing decision context 
 
 Phase 2 adds a safe real-shaped session-note fixture and tests whether the router can stage a small set of useful decision candidates from it.
 
+Phase 2.1 applies the yellow-review cleanup:
+
+- preserves possessives in generated titles, so `tomorrow's` does not become `Tomorrow S`
+- trims capped titles before half-phrases like `from the Phase`
+- lists every missing promotion blocker on partial candidates, including `Assumptions` and `Missing Data`
+
 ## Why This Exists
 
 The last private-shaped trial was safe but too noisy. It staged 19 weak candidates and created zero durable decisions.
@@ -54,7 +60,7 @@ Review complete:
 Manual-style private-local review against the safe fixture:
 
 ```text
-python3 -m decision_memory --vault /private/tmp/dmr-phase2-review-v2/private-test-vault ingest /private/tmp/dmr-phase2-review-v2/private-test-vault/daily/2026-05-14-session-note.md
+python3 -m decision_memory --vault /private/tmp/dmr-phase2-1-review/private-test-vault ingest /private/tmp/dmr-phase2-1-review/private-test-vault/daily/2026-05-14-session-note.md
 
 Ingest complete:
   candidates created: 3
@@ -71,10 +77,10 @@ Candidate decisions:
    missing: none
    suggested action: review-local
 
-2. Keep Tomorrow S Approved Post Separate
+2. Keep Tomorrow's Approved Post Separate
    privacy: private-local
    candidate_confidence: partial
-   missing: Reopen When
+   missing: Reopen When, Assumptions, Missing Data
    suggested action: review-local
 
 3. Use A Safe Real Shaped Fixture
@@ -86,7 +92,13 @@ Candidate decisions:
 
 ## Commands To Review Tomorrow
 
-From the repo root:
+From the repo root. In this local review copy, run:
+
+```bash
+cd /private/tmp/dmr-phase1-check
+```
+
+Then run:
 
 ```bash
 python3 -m unittest discover -s tests
@@ -105,6 +117,16 @@ cp fake-vault/real-shaped/2026-05-14-session-note.md /private/tmp/dmr-phase2-rev
 python3 -m decision_memory --vault /private/tmp/dmr-phase2-review/private-test-vault ingest /private/tmp/dmr-phase2-review/private-test-vault/daily/2026-05-14-session-note.md
 python3 -m decision_memory --vault /private/tmp/dmr-phase2-review/private-test-vault review
 python3 -m decision_memory --vault /private/tmp/dmr-phase2-review/private-test-vault inbox
+```
+
+After the Phase 2.1 cleanup, the expected partial candidate line is:
+
+```text
+2. Keep Tomorrow's Approved Post Separate
+   privacy: private-local
+   candidate_confidence: partial
+   missing: Reopen When, Assumptions, Missing Data
+   suggested action: review-local
 ```
 
 Open one complete candidate:

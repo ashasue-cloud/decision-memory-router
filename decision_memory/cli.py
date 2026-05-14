@@ -30,6 +30,8 @@ REQUIRED_PROMOTION_SECTIONS = [
     "Status",
     "Privacy",
     "Reopen When",
+    "Assumptions",
+    "Missing Data",
 ]
 
 REQUIRED_DURABLE_FIELDS = [
@@ -572,6 +574,10 @@ def render_candidate(candidate: Dict[str, str]) -> str:
         missing.append("Tradeoff")
     if not candidate.get("reopen"):
         missing.append("Reopen When")
+    if not candidate.get("assumptions"):
+        missing.append("Assumptions")
+    if not candidate.get("missing_data"):
+        missing.append("Missing Data")
     missing_text = "\n".join(f"- {item}" for item in missing) or "- none"
     return f"""---
 {dump_frontmatter(fm)}---
@@ -750,21 +756,40 @@ def find_date(text: str) -> str:
     return match.group(1) if match else ""
 
 
+def normalize_apostrophes(text: str) -> str:
+    return text.replace("’", "'")
+
+
+def title_tokens(text: str) -> List[str]:
+    normalized = normalize_apostrophes(text.lower())
+    return re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", normalized)
+
+
+def titlecase_token(word: str) -> str:
+    if "'" not in word:
+        return word.capitalize()
+    base, suffix = word.split("'", 1)
+    if suffix == "s":
+        return f"{base.capitalize()}'s"
+    return f"{base.capitalize()}'{suffix.capitalize()}"
+
+
 def slug_title(text: str) -> str:
     text = re.sub(
         r"^(we decided to|we decided|decided to|we chose|we will|we are not|decision:)\s+",
         "",
-        text.strip(),
+        normalize_apostrophes(text.strip()),
         flags=re.I,
     )
-    words = re.findall(r"[A-Za-z0-9]+", text.lower())[:8]
+    words = title_tokens(text)[:8]
     if len(words) >= 8:
         words = trim_trailing_fragments(words)
-    return " ".join(words).title() if words else "Untitled Decision"
+    return " ".join(titlecase_token(word) for word in words) if words else "Untitled Decision"
 
 
 def slugify(text: str) -> str:
-    return "-".join(re.findall(r"[a-z0-9]+", text.lower()))[:80] or "decision"
+    words = [word.replace("'", "") for word in title_tokens(text)]
+    return "-".join(words)[:80] or "decision"
 
 
 def infer_source(path: Path) -> str:
@@ -1068,6 +1093,10 @@ def parse_query_file(path: Path) -> List[Dict[str, Sequence[str]]]:
 
 def trim_trailing_fragments(words: List[str]) -> List[str]:
     weak_endings = {"any", "before", "for", "from", "not", "the", "as", "in", "to", "of", "and"}
+    trailing_clause_starters = {"after", "because", "before", "from", "until", "when", "while"}
+    for idx in range(len(words) - 1, 2, -1):
+        if words[idx] in trailing_clause_starters and len(words) - idx <= 3:
+            return words[:idx]
     while len(words) > 3 and words[-1] in weak_endings:
         words.pop()
     return words
