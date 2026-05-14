@@ -71,6 +71,17 @@ This cleanup adds:
 - missing-field reporting for every blocker before promotion: `Reopen When`, `Assumptions`, and `Missing Data`
 - tests that preserve the safe real-shaped fixture output while making the partial candidate easier to judge
 
+## Phase 2.2 Recall Review Cleanup
+
+Manual review found the recall receipt technically correct but too verbose to understand quickly.
+
+This cleanup adds:
+
+- concise recall output by default: route, confidence, top decisions, decision, and why
+- full diagnostic recall output behind `--verbose`
+- parser support for `python3 -m decision_memory recall --verbose "<query>"`
+- tests for both concise recall and verbose recall
+
 ## Work Covered In This Branch
 
 - Add section-aware parsing for session notes instead of splitting every signal-heavy paragraph.
@@ -79,6 +90,7 @@ This cleanup adds:
 - Add candidate confidence levels: `complete`, `partial`, `noise-risk`.
 - Improve partial-candidate missing-field reporting.
 - Improve generated title formatting for possessives and capped titles.
+- Make recall reviewer-friendly by default and keep full detail behind `--verbose`.
 - Keep private-local candidates blocked from public-proof promotion.
 
 ## Remaining Work Before Private-Local Reuse Proof

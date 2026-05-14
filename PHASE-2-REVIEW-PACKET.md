@@ -8,17 +8,15 @@ This packet is for Ashley's manual review. The build can be review-ready without
 
 Phase 1.1 makes recalled decisions easier to judge.
 
-When recall finds a decision, it now prints:
+By default, recall now prints:
 
+- route
+- confidence
+- top decisions
 - decision
 - why
-- options considered
-- tradeoff
-- impact
-- assumptions
-- missing data
-- reuse trigger
-- reuse_for
+
+The full receipt is still available with `--verbose`.
 
 When a query is too vague, the router now asks for the missing decision context instead of guessing.
 
@@ -29,6 +27,12 @@ Phase 2.1 applies the yellow-review cleanup:
 - preserves possessives in generated titles, so `tomorrow's` does not become `Tomorrow S`
 - trims capped titles before half-phrases like `from the Phase`
 - lists every missing promotion blocker on partial candidates, including `Assumptions` and `Missing Data`
+
+Phase 2.2 applies the recall-review cleanup:
+
+- makes recall concise by default so manual review is easier
+- shows only route, confidence, top decisions, decision, and why
+- keeps the full receipt available with `--verbose`
 
 ## Why This Exists
 
@@ -42,7 +46,7 @@ Expected verification:
 
 ```text
 python3 -m unittest discover -s tests
-Ran 20 tests
+Ran 21 tests
 OK
 
 python3 -m decision_memory eval
@@ -60,7 +64,7 @@ Review complete:
 Manual-style private-local review against the safe fixture:
 
 ```text
-python3 -m decision_memory --vault /private/tmp/dmr-phase2-1-review/private-test-vault ingest /private/tmp/dmr-phase2-1-review/private-test-vault/daily/2026-05-14-session-note.md
+python3 -m decision_memory --vault /private/tmp/dmr-phase2-2-review/private-test-vault ingest /private/tmp/dmr-phase2-2-review/private-test-vault/daily/2026-05-14-session-note.md
 
 Ingest complete:
   candidates created: 3
@@ -107,6 +111,31 @@ python3 -m decision_memory review
 python3 -m decision_memory recall "private vault public proof"
 python3 -m decision_memory recall "should semantic search stay out of scope"
 python3 -m decision_memory recall "can we do this thing soon"
+```
+
+The first two recall commands should now be short. Expected shape:
+
+```text
+Router recommendation:
+  route: privacy-boundary
+  confidence: high
+Top decisions:
+
+1. Keep The Real Vault Private Local And Use
+   decision: We will keep the real vault private-local and use public-fixture data for demos.
+   why: decision context is sensitive even when the tool is public.
+
+2. Fake Fixtures For Public Proof
+   decision: We chose fake fixtures for public proof.
+   why: public examples need to mirror the workflow without exposing private data.
+
+For the full receipt, rerun with --verbose.
+```
+
+If you need the full diagnostic receipt:
+
+```bash
+python3 -m decision_memory recall --verbose "private vault public proof"
 ```
 
 Then create a safe private-local review copy:

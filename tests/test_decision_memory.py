@@ -316,8 +316,46 @@ Slower posting cadence.
             self.assertEqual(code, 0)
             self.assertIn("Router recommendation:", text)
             self.assertIn("route: content-proof", text)
-            self.assertIn("reason:", text)
             self.assertIn("confidence: high", text)
+            self.assertIn("Top decisions:", text)
+            self.assertIn("Content Proof", text)
+            self.assertIn("For the full receipt, rerun with --verbose.", text)
+            self.assertNotIn("reason:", text)
+            self.assertNotIn("options:", text)
+
+    def test_recall_verbose_prints_full_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "fake-vault"
+            decisions = vault / "decisions"
+            decisions.mkdir(parents=True)
+            decision = decisions / "2026-05-03-content-proof.md"
+            decision.write_text(
+                """---
+id: 2026-05-03-content-proof
+title: Content Proof
+status: active
+privacy_level: public-fixture
+reuse_for: content-brief,github-proof
+---
+# Decision
+
+We decided to block content until build proof exists.
+
+## Tradeoff Accepted
+
+Slower posting cadence.
+""",
+                encoding="utf-8",
+            )
+
+            with redirect_stdout(StringIO()) as output:
+                code = cmd_recall(vault, ["--verbose", "content", "proof"])
+
+            text = output.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("Router recommendation:", text)
+            self.assertIn("route: content-proof", text)
+            self.assertIn("reason:", text)
             self.assertIn("Relevant decisions:", text)
             self.assertIn("why:", text)
             self.assertIn("options:", text)
