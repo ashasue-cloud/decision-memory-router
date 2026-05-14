@@ -8,6 +8,7 @@ from decision_memory.cli import (
     candidate_already_recorded,
     classify_route,
     cmd_ingest,
+    cmd_inbox,
     cmd_promote,
     cmd_recall,
     extract_candidates,
@@ -27,6 +28,7 @@ class DecisionMemoryTests(unittest.TestCase):
         candidates = extract_candidates(text, source)
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["privacy_level"], "public-fixture")
+        self.assertEqual(candidates[0]["candidate_confidence"], "partial")
         self.assertEqual(candidates[0]["route_category"], "privacy-boundary")
         self.assertEqual(candidates[0]["route_confidence"], "high")
 
@@ -225,12 +227,57 @@ When the boundary changes.
         self.assertIn("build-path", route.reason)
         self.assertEqual(route.clarifying_question, "")
 
+    def test_real_shaped_session_extracts_fewer_reviewable_candidates(self):
+        source = Path("fake-vault/real-shaped/2026-05-14-session-note.md")
+        candidates = extract_candidates(source.read_text(encoding="utf-8"), source)
+
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(
+            [candidate["candidate_confidence"] for candidate in candidates],
+            ["complete", "complete", "partial"],
+        )
+        self.assertEqual(candidates[0]["title"], "Keep Phase 2 As A Review Slice")
+        self.assertEqual(candidates[1]["title"], "Use A Safe Real Shaped Fixture")
+        self.assertNotIn("Passing Tests", {candidate["title"] for candidate in candidates})
+        self.assertNotIn("Energy Note", {candidate["title"] for candidate in candidates})
+
+    def test_real_shaped_private_local_ingest_stays_review_only(self):
+        source = Path("fake-vault/real-shaped/2026-05-14-session-note.md")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "private-test-vault"
+            daily = vault / "daily"
+            daily.mkdir(parents=True)
+            private_source = daily / source.name
+            private_source.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+            with redirect_stdout(StringIO()):
+                code = cmd_ingest(vault, [str(private_source)])
+            self.assertEqual(code, 0)
+
+            candidates = sorted((vault / "decision-inbox").glob("*.md"))
+            self.assertEqual(len(candidates), 3)
+            self.assertFalse((vault / "decisions").exists())
+            for candidate in candidates:
+                text = candidate.read_text(encoding="utf-8")
+                self.assertIn("privacy_level: private-local", text)
+                self.assertIn("candidate_confidence:", text)
+
+            with redirect_stdout(StringIO()) as output:
+                inbox_code = cmd_inbox(vault)
+            self.assertEqual(inbox_code, 0)
+            inbox_text = output.getvalue()
+            self.assertIn("candidate_confidence: complete", inbox_text)
+            self.assertIn("candidate_confidence: partial", inbox_text)
+            self.assertIn("suggested action: review-local", inbox_text)
+
     def test_classify_route_unclear_input_needs_clarification(self):
         route = classify_route("Can we do this thing soon?")
         self.assertEqual(route.category, "needs-clarification")
         self.assertEqual(route.confidence, "low")
         self.assertIn("none map cleanly", route.reason)
-        self.assertIn("Which route should this support", route.clarifying_question)
+        self.assertIn("What decision are you trying to reuse?", route.clarifying_question)
+        self.assertIn("Add one concrete noun", route.clarifying_question)
 
     def test_recall_prints_router_recommendation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -267,6 +314,12 @@ Slower posting cadence.
             self.assertIn("reason:", text)
             self.assertIn("confidence: high", text)
             self.assertIn("Relevant decisions:", text)
+            self.assertIn("why:", text)
+            self.assertIn("options:", text)
+            self.assertIn("impact:", text)
+            self.assertIn("assumptions:", text)
+            self.assertIn("missing_data:", text)
+            self.assertIn("reuse_trigger:", text)
 
     def test_recall_unclear_query_asks_for_clarification(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -279,7 +332,7 @@ Slower posting cadence.
             text = output.getvalue()
             self.assertEqual(code, 0)
             self.assertIn("route: needs-clarification", text)
-            self.assertIn("clarification: Which route should this support", text)
+            self.assertIn("clarification: What decision are you trying to reuse?", text)
             self.assertIn("No route applied until the question is clarified.", text)
 
     def test_rank_decisions_prioritizes_exact_route_phrase(self):

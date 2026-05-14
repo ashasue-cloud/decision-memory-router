@@ -9,6 +9,8 @@ privacy_level: public-fixture
 decision_type: build
 reuse_for: ai-session
 confidence: medium
+route_category: build-path
+route_confidence: high
 review_trigger: if CLI usage blocks evaluation with non-technical users.
 do_not_reopen_until: if CLI usage blocks evaluation with non-technical users.
 ---
@@ -33,7 +35,20 @@ less visual polish in exchange for faster learning.
 
 ## What This Affects
 
-- ai-session
+- Prototype scope.
+- Manual review speed.
+- Whether the team learns the decision-memory loop before designing UI.
+
+## Assumptions
+
+- The CLI is enough for Ashley to test source -> candidate -> recall.
+- UI polish would not answer the riskiest product question.
+- A visible command receipt is better than a hidden workflow for early debugging.
+
+## Missing Data
+
+- Whether a non-technical reviewer can judge the workflow from CLI output.
+- Which CLI steps create enough friction to require a UI later.
 
 ## Future Use
 

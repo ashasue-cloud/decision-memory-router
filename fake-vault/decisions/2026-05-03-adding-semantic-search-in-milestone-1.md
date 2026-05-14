@@ -9,6 +9,8 @@ privacy_level: public-fixture
 decision_type: product
 reuse_for: ai-session
 confidence: medium
+route_category: scope-decision
+route_confidence: high
 review_trigger: if rule-based recall fails the fixture eval.
 do_not_reopen_until: if rule-based recall fails the fixture eval.
 ---
@@ -33,7 +35,21 @@ keyword recall may miss fuzzy matches, but debugging stays simple.
 
 ## What This Affects
 
-- ai-session
+- Milestone 1 scope.
+- Recall quality expectations.
+- Any future proposal to add embeddings before structured decisions prove value.
+
+## Assumptions
+
+- Keyword recall is good enough to test whether decision records are reusable.
+- Adding embeddings now would make failures harder to debug.
+- The first risk is decision quality, not fuzzy retrieval.
+
+## Missing Data
+
+- How often real user queries need semantic matching.
+- Whether structured route labels reduce the need for embeddings.
+- What recall misses look like after private-local trials.
 
 ## Future Use
 

@@ -2,6 +2,10 @@
 
 Milestone 1 proves the fake-fixture loop. Milestone 2 should prove whether copied private-local notes can produce fewer, complete, reviewable decision candidates without exposing private data.
 
+Phase 2 is a review slice, not a memory-store launch.
+
+The review packet for Ashley is `PHASE-2-REVIEW-PACKET.md`.
+
 ## Current Failure
 
 Private trial input:
@@ -33,6 +37,27 @@ Target:
 at least 1 complete candidate
 0 public-fixture leakage
 0 automatic promotion
+```
+
+## Current Review Slice
+
+This branch adds:
+
+- richer recall receipts so decisions show why, options, tradeoff, impact, assumptions, missing data, and reuse trigger
+- clearer vague-query clarification
+- one public-safe real-shaped session-note fixture at `fake-vault/real-shaped/2026-05-14-session-note.md`
+- section-aware extraction from `## Decisions made`
+- candidate confidence labels: `complete`, `partial`, and `noise-risk`
+- private-local candidates that stay review-only instead of promotion-ready
+
+Expected safe-fixture output:
+
+```text
+3 staged candidates
+2 complete
+1 partial
+0 automatic promotions
+0 private data
 ```
 
 ## Work Needed
