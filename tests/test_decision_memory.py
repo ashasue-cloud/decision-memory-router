@@ -380,6 +380,46 @@ Slower posting cadence.
             self.assertIn("clarification: What decision are you trying to reuse?", text)
             self.assertIn("No route applied until the question is clarified.", text)
 
+    def test_recall_ambiguous_query_shows_lexical_matches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "fake-vault"
+            decisions = vault / "decisions"
+            decisions.mkdir(parents=True)
+            decision = decisions / "2026-05-03-public-proof.md"
+            decision.write_text(
+                """---
+id: 2026-05-03-public-proof
+title: Public Proof Uses Safe Fixtures
+status: active
+privacy_level: public-fixture
+reuse_for: content-brief,github-proof
+---
+# Decision
+
+Use safe fixtures for public proof and content posts.
+
+## Decision
+
+Use safe fixtures for public proof and content posts.
+
+## Why
+
+private context should not become public proof.
+""",
+                encoding="utf-8",
+            )
+
+            with redirect_stdout(StringIO()) as output:
+                code = cmd_recall(vault, ["content", "proof", "public", "post", "privacy", "boundary"])
+
+            text = output.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("route: needs-clarification", text)
+            self.assertIn("Route needs clarification. Showing lexical matches only.", text)
+            self.assertIn("Top decisions:", text)
+            self.assertIn("Public Proof Uses Safe Fixtures", text)
+            self.assertNotIn("No route applied until the question is clarified.", text)
+
     def test_rank_decisions_prioritizes_exact_route_phrase(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
