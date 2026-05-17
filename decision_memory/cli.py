@@ -423,9 +423,11 @@ def cmd_recall(vault: Path, args: List[str]) -> int:
         print_route_result(route)
     else:
         print_concise_route_result(route)
-    if route.category == "needs-clarification":
+    if route.category == "needs-clarification" and not ranked:
         print("No route applied until the question is clarified.")
         return 0
+    if route.category == "needs-clarification":
+        print("Route needs clarification. Showing lexical matches only.")
 
     if not ranked:
         print("No decisions matched.")
