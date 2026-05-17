@@ -271,6 +271,8 @@ When the boundary changes.
                 inbox_code = cmd_inbox(vault)
             self.assertEqual(inbox_code, 0)
             inbox_text = output.getvalue()
+            self.assertIn("\n1. Keep Phase 2 As A Review Slice\n", inbox_text)
+            self.assertNotIn("Keep Phase 2 As A Review Slice - sync", inbox_text)
             self.assertIn("candidate_confidence: complete", inbox_text)
             self.assertIn("candidate_confidence: partial", inbox_text)
             self.assertIn("missing: Reopen When, Assumptions, Missing Data", inbox_text)

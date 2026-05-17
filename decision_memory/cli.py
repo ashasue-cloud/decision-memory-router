@@ -351,7 +351,7 @@ def cmd_inbox(vault: Path) -> int:
             "candidate_confidence",
             parsed.frontmatter.get("confidence", "missing"),
         )
-        print(f"\n{idx}. {parsed.frontmatter.get('title', path.stem)} - {parsed.frontmatter.get('source', 'unknown')}")
+        print(f"\n{idx}. {parsed.frontmatter.get('title', path.stem)}")
         print(f"   file: {path}")
         print(f"   privacy: {parsed.frontmatter.get('privacy_level', 'missing')}")
         print(f"   candidate_confidence: {candidate_confidence}")
