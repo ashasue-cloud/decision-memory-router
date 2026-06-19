@@ -1,0 +1,87 @@
+name: Update Linear on PR Merge
+
+# Updates Linear issue state automatically when a PR merges to main.
+# Requires: LINEAR_API_KEY secret, LINEAR_DONE_STATE_ID variable.
+#
+# Setup:
+# 1. Go to Linear → Settings → API → Create personal API key
+# 2. Add LINEAR_API_KEY as a GitHub repo secret
+# 3. Find your "Done" state ID in Linear (Settings → Workflow → copy state ID)
+# 4. Add LINEAR_DONE_STATE_ID as a GitHub repo variable
+# 5. Name branches with Linear issue ID: e.g. AAT-12-my-feature-branch
+#
+# The branch name OR PR title must contain a Linear issue ID like AAT-12 or LIN-456.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  update-linear:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Extract Linear Issue ID
+        id: linear-id
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          TITLE="${{ github.event.pull_request.title }}"
+          LINEAR_ID=$(echo "$BRANCH $TITLE" | grep -oE '[A-Z]+-[0-9]+' | head -1)
+          if [ -z "$LINEAR_ID" ]; then
+            echo "No Linear issue ID found in branch '$BRANCH' or title '$TITLE'. Skipping."
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found Linear ID: $LINEAR_ID"
+            echo "linear_id=$LINEAR_ID" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Linear issue to Done
+        if: steps.linear-id.outputs.found == 'true'
+        run: |
+          LINEAR_ID="${{ steps.linear-id.outputs.linear_id }}"
+          DONE_STATE="${{ vars.LINEAR_DONE_STATE_ID }}"
+
+          # First resolve the issue ID from the identifier (e.g. AAT-12)
+          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: ${{ secrets.LINEAR_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"query { issue(id: \\\"$LINEAR_ID\\\") { id title } }\"}")
+
+          ISSUE_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+          if [ -z "$ISSUE_ID" ]; then
+            echo "Could not resolve Linear issue ID for $LINEAR_ID"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+
+          # Update the issue state to Done
+          UPDATE_RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: ${{ secrets.LINEAR_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"mutation { issueUpdate(id: \\\"$ISSUE_ID\\\", input: { stateId: \\\"$DONE_STATE\\\" }) { success issue { title state { name } } } }\"}")
+
+          echo "Update response: $UPDATE_RESPONSE"
+
+          SUCCESS=$(echo "$UPDATE_RESPONSE" | grep -o '"success":true' || true)
+          if [ -n "$SUCCESS" ]; then
+            echo "✅ Linear issue $LINEAR_ID updated to Done"
+          else
+            echo "::warning::Linear update may have failed. Check response above."
+          fi
+
+      - name: Add PR merge comment
+        if: steps.linear-id.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const linearId = '${{ steps.linear-id.outputs.linear_id }}';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Proof merged. Linear issue ${linearId} marked Done. Builds-tracker state can now advance.`
+            });
