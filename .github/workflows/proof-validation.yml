@@ -1,13 +1,16 @@
 name: Proof Validation
 
-# Runs on every PR to main. Checks that proof artifacts exist and scripts pass.
-# Install in any Ashley proof repo. Does not require Linear or API keys.
+# Validates proof artifacts on every PR. Fails if no proof exists at all.
+# Install in any Ashley proof repo.
 
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   validate-proof:
@@ -26,43 +29,36 @@ jobs:
             npm install
           fi
 
-      - name: Check proof directory exists
+      - name: Check proof infrastructure exists
         run: |
-          if [ ! -d "proofs" ]; then
-            echo "::warning::No proofs/ directory found. Add proof artifacts before claiming build is done."
-          else
-            echo "✅ proofs/ directory found"
-            ls proofs/
+          HAS_PROOFS=false
+          HAS_SCRIPTS=false
+          HAS_README=false
+
+          [ -d "proofs" ] && [ "$(ls -A proofs/ 2>/dev/null)" ] && HAS_PROOFS=true
+          ls scripts/test-*.mjs 2>/dev/null | head -1 | grep -q "." && HAS_SCRIPTS=true
+          grep -qi "proof\|evidence\|result\|eval" README.md 2>/dev/null && HAS_README=true
+
+          echo "proofs/: $HAS_PROOFS"
+          echo "scripts/test-*.mjs: $HAS_SCRIPTS"
+          echo "README proof section: $HAS_README"
+
+          if [ "$HAS_PROOFS" = "false" ] && [ "$HAS_SCRIPTS" = "false" ] && [ "$HAS_README" = "false" ]; then
+            echo "::error::No proof artifacts found. Add proofs/, scripts/test-*.mjs, or a README proof section before merging."
+            exit 1
           fi
 
-      - name: Run all test scripts
+      - name: Run proof scripts
         run: |
           FAILED=0
-          if [ -d "scripts" ]; then
+          if ls scripts/test-*.mjs 2>/dev/null | head -1 | grep -q "."; then
             for script in scripts/test-*.mjs; do
-              if [ -f "$script" ]; then
-                echo "Running: $script"
-                node "$script" || { echo "❌ FAILED: $script"; FAILED=1; }
-              fi
+              echo "Running: $script"
+              node "$script" || { echo "::error::Failed: $script"; FAILED=1; }
             done
           fi
           if [ -f "scripts/content-gate.mjs" ]; then
-            echo "Running content gate..."
-            node scripts/content-gate.mjs || { echo "❌ Content gate failed"; FAILED=1; }
+            node scripts/content-gate.mjs || { echo "::error::Content gate failed"; FAILED=1; }
           fi
-          if [ $FAILED -eq 1 ]; then
-            echo "::error::One or more proof scripts failed. Build state cannot advance."
-            exit 1
-          fi
+          [ $FAILED -eq 1 ] && exit 1
           echo "✅ All proof scripts passed"
-
-      - name: Verify README proof claims
-        run: |
-          if [ -f "README.md" ]; then
-            # Warn if README has no proof section
-            if ! grep -qi "proof\|evidence\|result" README.md; then
-              echo "::warning::README has no proof/evidence section. Consider adding proof of use."
-            else
-              echo "✅ README contains proof section"
-            fi
-          fi
