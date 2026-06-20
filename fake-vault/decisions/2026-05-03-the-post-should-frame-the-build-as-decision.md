@@ -9,6 +9,8 @@ privacy_level: public-fixture
 decision_type: content
 reuse_for: content-brief,performance-review,interview-story
 confidence: medium
+route_category: content-proof
+route_confidence: high
 review_trigger: if the prototype shows decision recall is not useful.
 do_not_reopen_until: if the prototype shows decision recall is not useful.
 ---
@@ -33,7 +35,20 @@ narrower technical scope, stronger product point of view.
 
 ## What This Affects
 
-- content-brief,performance-review,interview-story
+- Content briefs.
+- Portfolio proof.
+- Interview stories about product judgment and AI-assisted work.
+
+## Assumptions
+
+- Decision memory is a sharper product claim than note search.
+- The hiring audience will value the decision layer more than broad vault search.
+- Narrower scope makes the build easier to judge.
+
+## Missing Data
+
+- Whether readers immediately understand the distinction between decision memory and note search.
+- Whether future recall output actually changes a task, not just retrieves a note.
 
 ## Future Use
 

@@ -2,6 +2,10 @@
 
 Milestone 1 proves the fake-fixture loop. Milestone 2 should prove whether copied private-local notes can produce fewer, complete, reviewable decision candidates without exposing private data.
 
+Phase 2 is a review slice, not a memory-store launch.
+
+The review packet for Ashley is `PHASE-2-REVIEW-PACKET.md`.
+
 ## Current Failure
 
 Private trial input:
@@ -35,15 +39,64 @@ at least 1 complete candidate
 0 automatic promotion
 ```
 
-## Work Needed
+## Current Review Slice
+
+This branch adds:
+
+- richer recall receipts so decisions show why, options, tradeoff, impact, assumptions, missing data, and reuse trigger
+- clearer vague-query clarification
+- one public-safe real-shaped session-note fixture at `fake-vault/real-shaped/2026-05-14-session-note.md`
+- section-aware extraction from `## Decisions made`
+- candidate confidence labels: `complete`, `partial`, and `noise-risk`
+- private-local candidates that stay review-only instead of promotion-ready
+
+Expected safe-fixture output:
+
+```text
+3 staged candidates
+2 complete
+1 partial
+0 automatic promotions
+0 private data
+```
+
+## Phase 2.1 Yellow-Review Cleanup
+
+Manual review found the slice useful but not ready for private-local reuse proof because the partial candidate was under-explained.
+
+This cleanup adds:
+
+- readable possessive titles, for example `Keep Tomorrow's Approved Post Separate`
+- slug cleanup for possessives, for example `keep-tomorrows-approved-post-separate`
+- missing-field reporting for every blocker before promotion: `Reopen When`, `Assumptions`, and `Missing Data`
+- tests that preserve the safe real-shaped fixture output while making the partial candidate easier to judge
+
+## Phase 2.2 Recall Review Cleanup
+
+Manual review found the recall receipt technically correct but too verbose to understand quickly.
+
+This cleanup adds:
+
+- concise recall output by default: route, confidence, top decisions, decision, and why
+- full diagnostic recall output behind `--verbose`
+- parser support for `python3 -m decision_memory recall --verbose "<query>"`
+- tests for both concise recall and verbose recall
+
+## Work Covered In This Branch
 
 - Add section-aware parsing for session notes instead of splitting every signal-heavy paragraph.
 - Ignore headings, project lists, salience summaries, and assumption inventories unless they contain a full decision record.
 - Require labeled decision fields before suggesting `promote`.
 - Add candidate confidence levels: `complete`, `partial`, `noise-risk`.
-- Group duplicate or related candidates from the same source.
+- Improve partial-candidate missing-field reporting.
+- Improve generated title formatting for possessives and capped titles.
+- Make recall reviewer-friendly by default and keep full detail behind `--verbose`.
 - Keep private-local candidates blocked from public-proof promotion.
-- Add an eval fixture based on sanitized real-shaped notes.
+
+## Remaining Work Before Private-Local Reuse Proof
+
+- Decide whether duplicate or related candidates from the same source need grouping.
+- Add more sanitized real-shaped fixtures if one note is not enough coverage.
 
 ## Acceptance
 

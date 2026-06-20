@@ -30,6 +30,8 @@ REQUIRED_PROMOTION_SECTIONS = [
     "Status",
     "Privacy",
     "Reopen When",
+    "Assumptions",
+    "Missing Data",
 ]
 
 REQUIRED_DURABLE_FIELDS = [
@@ -72,6 +74,17 @@ STOP_TERMS = {
     "what",
     "with",
 }
+
+LABEL_NAMES = (
+    "Decision",
+    "Why",
+    "Rejected",
+    "Tradeoff",
+    "Reopen",
+    "Assumptions",
+    "Missing Data",
+    "Missing",
+)
 
 ROUTE_RULES: Dict[str, Tuple[Tuple[str, int], ...]] = {
     "content-proof": (
@@ -148,7 +161,8 @@ ROUTE_REASONS = {
 }
 
 DEFAULT_CLARIFYING_QUESTION = (
-    "Which route should this support, content-proof, privacy-boundary, scope-decision, or build-path?"
+    "What decision are you trying to reuse? Add one concrete noun and choose a lane: "
+    "content proof, privacy boundary, scope, or build path."
 )
 
 
@@ -176,8 +190,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("command", nargs="?")
     parser.add_argument("args", nargs="*")
     parser.add_argument("--vault", default="fake-vault")
+    parser.add_argument("--verbose", action="store_true")
     parser.add_argument("-h", "--help", action="store_true")
-    ns = parser.parse_args(argv)
+    ns, extra_args = parser.parse_known_args(argv)
+    if extra_args and ns.command == "recall":
+        ns.args.extend(extra_args)
+    elif extra_args:
+        print(f"Unknown arguments: {' '.join(extra_args)}")
+        return 2
 
     if ns.help or not ns.command:
         print_help()
@@ -192,7 +212,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         if ns.command == "promote":
             return cmd_promote(vault, ns.args)
         if ns.command == "recall":
-            return cmd_recall(vault, ns.args)
+            recall_args = ["--verbose", *ns.args] if ns.verbose else ns.args
+            return cmd_recall(vault, recall_args)
         if ns.command == "review":
             return cmd_review(vault)
         if ns.command == "eval":
@@ -229,6 +250,7 @@ Use:
   python -m decision_memory inbox             Review candidate decisions
   python -m decision_memory promote <file>    Promote candidate to durable decision
   python -m decision_memory recall "<query>"  Find decisions for current work
+  python -m decision_memory recall --verbose "<query>"  Show the full recall receipt
   python -m decision_memory review            Check active/stale/unresolved decisions
   python -m decision_memory eval              Run fixture query eval
   python -m decision_memory capture           Manual fallback
@@ -325,11 +347,16 @@ def cmd_inbox(vault: Path) -> int:
     for idx, path in enumerate(candidates, 1):
         parsed = parse_markdown(path)
         missing = missing_promotion_sections(parsed.body)
-        print(f"\n{idx}. {parsed.frontmatter.get('title', path.stem)} - {parsed.frontmatter.get('source', 'unknown')}")
+        candidate_confidence = parsed.frontmatter.get(
+            "candidate_confidence",
+            parsed.frontmatter.get("confidence", "missing"),
+        )
+        print(f"\n{idx}. {parsed.frontmatter.get('title', path.stem)}")
         print(f"   file: {path}")
         print(f"   privacy: {parsed.frontmatter.get('privacy_level', 'missing')}")
+        print(f"   candidate_confidence: {candidate_confidence}")
         print(f"   missing: {', '.join(missing) if missing else 'none'}")
-        print(f"   suggested action: {'promote' if not missing else 'keep'}")
+        print(f"   suggested action: {candidate_action(parsed, missing)}")
     return 0
 
 
@@ -380,17 +407,22 @@ def cmd_promote(vault: Path, args: List[str]) -> int:
 
 
 def cmd_recall(vault: Path, args: List[str]) -> int:
-    if not args:
+    verbose = "--verbose" in args or "-v" in args
+    query_args = [arg for arg in args if arg not in {"--verbose", "-v"}]
+    if not query_args:
         raise DecisionMemoryError(
             'No query provided.\nNext step: python -m decision_memory recall "content proof"',
             2,
         )
-    query = " ".join(args)
+    query = " ".join(query_args)
     route = classify_route(query)
     decisions = list((vault / "decisions").glob("*.md")) if (vault / "decisions").exists() else []
     ranked = rank_decisions(query, decisions)
 
-    print_route_result(route)
+    if verbose:
+        print_route_result(route)
+    else:
+        print_concise_route_result(route)
     if route.category == "needs-clarification":
         print("No route applied until the question is clarified.")
         return 0
@@ -400,18 +432,37 @@ def cmd_recall(vault: Path, args: List[str]) -> int:
         print(f'Fallback: try broader terms or run rg "{query}" {vault}/')
         return 0
 
+    if verbose:
+        print_verbose_decisions(ranked)
+        return 0
+
+    print("Top decisions:")
+    for idx, (_, parsed) in enumerate(ranked[:2], 1):
+        print(f"\n{idx}. {parsed.frontmatter.get('title', parsed.path.stem)}")
+        print(f"   decision: {one_line(section(parsed.body, 'Decision'), 140)}")
+        print(f"   why: {one_line(section(parsed.body, 'Why'), 140)}")
+    print("\nFor the full receipt, rerun with --verbose.")
+    return 0
+
+
+def print_verbose_decisions(ranked: Sequence[Tuple[int, ParsedMarkdown]]) -> None:
     print("Relevant decisions:")
     for idx, (score, parsed) in enumerate(ranked[:3], 1):
         warning = status_warning(parsed.frontmatter.get("status", ""))
         print(f"\n{idx}. {parsed.frontmatter.get('title', parsed.path.stem)} - {parsed.frontmatter.get('status', 'missing')} - matched score {score}")
         print(f"   file: {parsed.path}")
         print(f"   privacy: {parsed.frontmatter.get('privacy_level', 'missing')}")
-        print(f"   decision: {section(parsed.body, 'Decision')[:160]}")
-        print(f"   tradeoff: {section(parsed.body, 'Tradeoff Accepted')[:160]}")
+        print(f"   decision: {one_line(section(parsed.body, 'Decision'), 180)}")
+        print(f"   why: {one_line(section(parsed.body, 'Why'), 180)}")
+        print(f"   options: {one_line(section(parsed.body, 'Options Considered'), 220)}")
+        print(f"   tradeoff: {one_line(section(parsed.body, 'Tradeoff Accepted'), 180)}")
+        print(f"   impact: {one_line(section(parsed.body, 'What This Affects'), 180)}")
+        print(f"   assumptions: {one_line(section(parsed.body, 'Assumptions'), 180)}")
+        print(f"   missing_data: {one_line(section(parsed.body, 'Missing Data'), 180)}")
+        print(f"   reuse_trigger: {one_line(section(parsed.body, 'Review Trigger'), 180)}")
         print(f"   reuse_for: {parsed.frontmatter.get('reuse_for', 'missing')}")
         if warning:
             print(f"   warning: {warning}")
-    return 0
 
 
 def cmd_review(vault: Path) -> int:
@@ -469,7 +520,7 @@ def cmd_eval(vault: Path, args: List[str]) -> int:
 
 
 def extract_candidates(text: str, source: Path) -> List[Dict[str, str]]:
-    blocks = [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+    blocks = candidate_blocks(text)
     candidates = []
     for block in blocks:
         lower = block.lower()
@@ -480,6 +531,21 @@ def extract_candidates(text: str, source: Path) -> List[Dict[str, str]]:
         day = find_date(text) or str(date.today())
         candidate_id = f"{day}-{slugify(title)}"
         route = classify_route(block)
+        why = find_labeled(block, "Why")
+        rejected = find_labeled(block, "Rejected")
+        tradeoff = find_labeled(block, "Tradeoff")
+        reopen = find_labeled(block, "Reopen")
+        assumptions = find_labeled(block, "Assumptions")
+        missing_data = find_labeled(block, "Missing Data") or find_labeled(block, "Missing")
+        confidence = candidate_confidence(
+            decision=decision,
+            why=why,
+            rejected=rejected,
+            tradeoff=tradeoff,
+            reopen=reopen,
+            assumptions=assumptions,
+            missing_data=missing_data,
+        )
         candidates.append(
             {
                 "id": candidate_id,
@@ -490,16 +556,19 @@ def extract_candidates(text: str, source: Path) -> List[Dict[str, str]]:
                 "privacy_level": "public-fixture",
                 "decision_type": infer_type(block),
                 "reuse_for": infer_reuse(block),
-                "confidence": "medium",
+                "confidence": confidence,
+                "candidate_confidence": confidence,
                 "route_category": route.category,
                 "route_reason": route.reason,
                 "route_confidence": route.confidence,
                 "clarifying_question": route.clarifying_question,
                 "decision": decision,
-                "why": find_labeled(block, "Why"),
-                "rejected": find_labeled(block, "Rejected"),
-                "tradeoff": find_labeled(block, "Tradeoff"),
-                "reopen": find_labeled(block, "Reopen"),
+                "why": why,
+                "rejected": rejected,
+                "tradeoff": tradeoff,
+                "reopen": reopen,
+                "assumptions": assumptions,
+                "missing_data": missing_data,
                 "evidence": block,
             }
         )
@@ -518,6 +587,7 @@ def render_candidate(candidate: Dict[str, str]) -> str:
         "decision_type": candidate["decision_type"],
         "reuse_for": candidate["reuse_for"],
         "confidence": candidate["confidence"],
+        "candidate_confidence": candidate.get("candidate_confidence", candidate["confidence"]),
         "route_category": candidate.get("route_category", "needs-clarification"),
         "route_confidence": candidate.get("route_confidence", "low"),
     }
@@ -530,6 +600,10 @@ def render_candidate(candidate: Dict[str, str]) -> str:
         missing.append("Tradeoff")
     if not candidate.get("reopen"):
         missing.append("Reopen When")
+    if not candidate.get("assumptions"):
+        missing.append("Assumptions")
+    if not candidate.get("missing_data"):
+        missing.append("Missing Data")
     missing_text = "\n".join(f"- {item}" for item in missing) or "- none"
     return f"""---
 {dump_frontmatter(fm)}---
@@ -566,6 +640,18 @@ active
 ## Reopen When
 
 {candidate.get('reopen') or ''}
+
+## Assumptions
+
+{candidate.get('assumptions') or ''}
+
+## Missing Data
+
+{candidate.get('missing_data') or ''}
+
+## Candidate Quality
+
+{candidate.get('candidate_confidence') or candidate.get('confidence') or ''}
 
 ## Router Result
 
@@ -611,6 +697,14 @@ def render_durable(parsed: ParsedMarkdown) -> str:
 ## What This Affects
 
 - {fm.get('reuse_for', 'future work')}
+
+## Assumptions
+
+{section(parsed.body, 'Assumptions') or 'Not captured.'}
+
+## Missing Data
+
+{section(parsed.body, 'Missing Data') or 'Not captured.'}
 
 ## Future Use
 
@@ -664,9 +758,16 @@ def section(body: str, heading: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def one_line(text: str, limit: int) -> str:
+    if not text:
+        return "missing"
+    clean = " ".join(text.split())
+    return clean[:limit]
+
+
 def find_labeled(block: str, label: str) -> str:
-    labels = "Decision|Why|Rejected|Tradeoff|Reopen"
-    match = re.search(rf"{label}\s*:\s*(.*?)(?=\s+(?:{labels})\s*:|$)", block, flags=re.I | re.S)
+    labels = "|".join(re.escape(name) for name in sorted(LABEL_NAMES, key=len, reverse=True))
+    match = re.search(rf"{re.escape(label)}\s*:\s*(.*?)(?=\s+(?:{labels})\s*:|$)", block, flags=re.I | re.S)
     return match.group(1).strip() if match else ""
 
 
@@ -681,21 +782,40 @@ def find_date(text: str) -> str:
     return match.group(1) if match else ""
 
 
+def normalize_apostrophes(text: str) -> str:
+    return text.replace("’", "'")
+
+
+def title_tokens(text: str) -> List[str]:
+    normalized = normalize_apostrophes(text.lower())
+    return re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", normalized)
+
+
+def titlecase_token(word: str) -> str:
+    if "'" not in word:
+        return word.capitalize()
+    base, suffix = word.split("'", 1)
+    if suffix == "s":
+        return f"{base.capitalize()}'s"
+    return f"{base.capitalize()}'{suffix.capitalize()}"
+
+
 def slug_title(text: str) -> str:
     text = re.sub(
         r"^(we decided to|we decided|decided to|we chose|we will|we are not|decision:)\s+",
         "",
-        text.strip(),
+        normalize_apostrophes(text.strip()),
         flags=re.I,
     )
-    words = re.findall(r"[A-Za-z0-9]+", text.lower())[:8]
+    words = title_tokens(text)[:8]
     if len(words) >= 8:
         words = trim_trailing_fragments(words)
-    return " ".join(words).title() if words else "Untitled Decision"
+    return " ".join(titlecase_token(word) for word in words) if words else "Untitled Decision"
 
 
 def slugify(text: str) -> str:
-    return "-".join(re.findall(r"[a-z0-9]+", text.lower()))[:80] or "decision"
+    words = [word.replace("'", "") for word in title_tokens(text)]
+    return "-".join(words)[:80] or "decision"
 
 
 def infer_source(path: Path) -> str:
@@ -713,6 +833,69 @@ def infer_source(path: Path) -> str:
     if "projects" in parts:
         return "build-session"
     return "manual"
+
+
+def candidate_blocks(text: str) -> List[str]:
+    decision_section = section_by_heading(text, "Decisions made") or section_by_heading(text, "Decisions")
+    if decision_section:
+        return bullet_blocks(decision_section)
+    return [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+
+
+def section_by_heading(text: str, heading: str) -> str:
+    pattern = rf"^## {re.escape(heading)}\s*\n(.*?)(?=^## |\Z)"
+    match = re.search(pattern, text, flags=re.M | re.S | re.I)
+    return match.group(1).strip() if match else ""
+
+
+def bullet_blocks(text: str) -> List[str]:
+    blocks: List[str] = []
+    current: List[str] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- "):
+            if current:
+                blocks.append(" ".join(current))
+            current = [stripped[2:].strip()]
+        elif current:
+            current.append(stripped)
+    if current:
+        blocks.append(" ".join(current))
+    if blocks:
+        return blocks
+    return [block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()]
+
+
+def candidate_confidence(
+    *,
+    decision: str,
+    why: str,
+    rejected: str,
+    tradeoff: str,
+    reopen: str,
+    assumptions: str,
+    missing_data: str,
+) -> str:
+    if not decision:
+        return "noise-risk"
+    required_count = sum(bool(value) for value in (why, rejected, tradeoff, reopen))
+    if required_count == 4 and assumptions and missing_data:
+        return "complete"
+    if required_count >= 2:
+        return "partial"
+    return "noise-risk"
+
+
+def candidate_action(parsed: ParsedMarkdown, missing: Sequence[str]) -> str:
+    privacy = parsed.frontmatter.get("privacy_level", "")
+    confidence = parsed.frontmatter.get("candidate_confidence", parsed.frontmatter.get("confidence", ""))
+    if privacy != "public-fixture":
+        return "review-local"
+    if missing or confidence != "complete":
+        return "keep"
+    return "promote"
 
 
 def infer_type(block: str) -> str:
@@ -737,7 +920,9 @@ def infer_reuse(block: str) -> str:
         values.append("github-proof")
     if "spec" in lower or "prd" in lower:
         values.append("prd-spec")
-    if "review" in lower:
+    if "build" in lower or "phase" in lower or "prototype" in lower:
+        values.append("build-session")
+    if "performance review" in lower:
         values.append("performance-review")
     if "interview" in lower:
         values.append("interview-story")
@@ -837,6 +1022,14 @@ def print_route_result(route: RouteResult) -> None:
         print(f"  clarification: {route.clarifying_question}")
 
 
+def print_concise_route_result(route: RouteResult) -> None:
+    print("Router recommendation:")
+    print(f"  route: {route.category}")
+    print(f"  confidence: {route.confidence}")
+    if route.clarifying_question:
+        print(f"  clarification: {route.clarifying_question}")
+
+
 def rank_decisions(query: str, paths: Iterable[Path]) -> List[Tuple[int, ParsedMarkdown]]:
     terms = query_terms(query)
     phrases = query_phrases(query)
@@ -850,6 +1043,8 @@ def rank_decisions(query: str, paths: Iterable[Path]) -> List[Tuple[int, ParsedM
         score = sum(1 for term in terms if term in haystack_terms)
         score += phrase_match_score(phrases, normalized_haystack)
         score += route_match_score(route, query, normalized_haystack, haystack_terms)
+        if route.category != "needs-clarification" and parsed.frontmatter.get("route_category") == route.category:
+            score += 5
         if score:
             ranked.append((score, parsed))
     return sorted(ranked, key=lambda item: item[0], reverse=True)
@@ -931,7 +1126,11 @@ def parse_query_file(path: Path) -> List[Dict[str, Sequence[str]]]:
 
 
 def trim_trailing_fragments(words: List[str]) -> List[str]:
-    weak_endings = {"for", "the", "as", "in", "to", "of", "and"}
+    weak_endings = {"any", "before", "for", "from", "not", "the", "as", "in", "to", "of", "and"}
+    trailing_clause_starters = {"after", "because", "before", "from", "until", "when", "while"}
+    for idx in range(len(words) - 1, 2, -1):
+        if words[idx] in trailing_clause_starters and len(words) - idx <= 3:
+            return words[:idx]
     while len(words) > 3 and words[-1] in weak_endings:
         words.pop()
     return words

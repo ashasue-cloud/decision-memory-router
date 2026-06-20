@@ -9,6 +9,8 @@ privacy_level: public-fixture
 decision_type: privacy
 reuse_for: performance-review
 confidence: medium
+route_category: privacy-boundary
+route_confidence: high
 review_trigger: if we create a formal anonymization process and review it separately.
 do_not_reopen_until: if we create a formal anonymization process and review it separately.
 ---
@@ -33,7 +35,20 @@ more fixture-writing work, less privacy risk.
 
 ## What This Affects
 
-- performance-review
+- Demo data policy.
+- Public repo boundaries.
+- Any future private-local trial or anonymization process.
+
+## Assumptions
+
+- Decision context is sensitive even after obvious names and details are removed.
+- Public proof should not depend on sanitizing real vault content.
+- A separate anonymization process needs its own review before real data leaves local storage.
+
+## Missing Data
+
+- Whether an anonymization process can preserve decision usefulness without exposing private context.
+- Whether private-local trials need different review fields than public fixtures.
 
 ## Future Use
 
